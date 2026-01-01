@@ -1,8 +1,4 @@
-# from dotenv import load_dotenv
-# load_dotenv("./.env")
-
 import os
-# import requests
 import smtplib
 from email.message import EmailMessage
 from bs4 import BeautifulSoup
