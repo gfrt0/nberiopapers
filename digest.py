@@ -2,7 +2,7 @@
 # load_dotenv("./.env")
 
 import os
-import requests
+# import requests
 import smtplib
 from email.message import EmailMessage
 from bs4 import BeautifulSoup
