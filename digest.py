@@ -11,6 +11,7 @@ import re
 # Load environment variables
 # -------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
 SMTP_USER = os.environ.get("SMTP_USER")
@@ -82,7 +83,7 @@ ABSTRACT:
             {"role": "system", "content": "You extract structured information from economics papers."},
             {"role": "user", "content": prompt},
         ],
-        model="llama-3.3-70b-versatile",
+        model=GROQ_MODEL,
         temperature=0.2,
     )
 
@@ -92,14 +93,14 @@ ABSTRACT:
 # -------------------------
 # Step 3: Build aggregated weekly email
 # -------------------------
-def build_email(papers_summaries):
-    if not papers_summaries:
+def build_email(papers_summaries, failures):
+    if not papers_summaries and not failures:
         return {
             "subject": "NBER IO Digest: No new papers this week",
             "body": "There are no new Industrial Organization papers this week."
         }
 
-    subject = f"NBER IO Digest: {len(papers_summaries)} new papers"
+    subject = f"NBER IO Digest: {len(papers_summaries) + len(failures)} new papers"
 
     body_lines = ["This week's NBER Industrial Organization papers:\n"]
 
@@ -113,6 +114,14 @@ def build_email(papers_summaries):
         body_lines.append(f"Data: {summary.get('data', 'N/A')}")
         body_lines.append(f"Main result: {summary.get('main_result', 'N/A')}")
         body_lines.append("\n")
+
+    if failures:
+        subject += f" ({len(failures)} failed to summarize)"
+        body_lines.append(f"Failed to summarize ({GROQ_MODEL}):\n")
+        for paper, err in failures:
+            body_lines.append(f"- {paper['title']}")
+            body_lines.append(f"  URL: {paper['url']}")
+            body_lines.append(f"  Error: {err}")
 
     body = "\n".join(body_lines)
     return {"subject": subject, "body": body}
@@ -137,6 +146,7 @@ def send_email(subject, body):
 def main():
     papers = fetch_new_io_papers()
     papers_summaries = []
+    failures = []
 
     for paper in papers:
         try:
@@ -144,10 +154,15 @@ def main():
             papers_summaries.append({"paper": paper, "summary": summary})
         except Exception as e:
             print(f"Failed to summarize {paper['title']}: {e}")
+            failures.append((paper, e))
 
-    email_content = build_email(papers_summaries)
+    email_content = build_email(papers_summaries, failures)
     send_email(email_content["subject"], email_content["body"])
     print(f"Email sent: {email_content['subject']}")
+
+    # Non-zero exit marks the Actions run as failed, which triggers GitHub's failure notification.
+    if failures:
+        raise SystemExit(1)
 
 if __name__ == "__main__":
     main()
